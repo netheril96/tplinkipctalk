@@ -15,13 +15,13 @@ import (
 )
 
 type TplinkTalkConnection struct {
-	rw         bufio.ReadWriter
+	rw         *bufio.ReadWriter
 	user       string
 	passwd     string
 	packetizer rtp.Packetizer
 }
 
-func NewTplinkTalkConnection(rw bufio.ReadWriter, user, passwd string, ssrc uint32) *TplinkTalkConnection {
+func NewTplinkTalkConnection(rw *bufio.ReadWriter, user, passwd string, ssrc uint32) *TplinkTalkConnection {
 	packetizer := rtp.NewPacketizer(1200, 102, ssrc, &codecs.G711Payloader{}, rtp.NewRandomSequencer(), 16000)
 	return &TplinkTalkConnection{
 		rw:         rw,

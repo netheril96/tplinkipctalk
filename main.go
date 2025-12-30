@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 
+	"github.com/netheril96/tplinkipctalk/lib"
 	"github.com/pion/rtp"
 )
 
@@ -68,8 +71,45 @@ func parser_test() error {
 	return nil
 }
 
+func talk_main() error {
+	user := flag.String("user", "admin", "User name")
+	passwd := flag.String("passwd", "", "Password")
+	ip := flag.String("ip", "10.88.40.16", "IP address")
+	port := flag.String("port", "554", "Port")
+
+	flag.Parse()
+	conn, err := net.Dial("tcp", net.JoinHostPort(*ip, *port))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	tp := lib.NewTplinkTalkConnection(rw, *user, *passwd, 0)
+	err = tp.Start()
+	if err != nil {
+		return err
+	}
+	defer tp.Stop()
+	buf := make([]byte, 1000)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if n > 0 {
+			if err := tp.SendPcm(buf[:n]); err != nil {
+				return err
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func main() {
-	err := parser_test()
+	err := talk_main()
 	if err != nil {
 		log.Fatal(err)
 	}
