@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -55,6 +57,8 @@ func parser_test() error {
 		if err != nil {
 			return err
 		}
+		m, _ := json.MarshalIndent(p.Header, "", "  ")
+		fmt.Println(string(m))
 		_, err = writer.Write(p.Payload)
 		if err != nil {
 			return err
