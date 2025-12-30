@@ -121,7 +121,7 @@ func parseDigestAuth(auth string) (realm string, nonce string) {
 	if !strings.HasPrefix(auth, prefix) {
 		return "", ""
 	}
-	for _, field := range strings.Split(auth[len(prefix):], ",") {
+	for field := range strings.SplitSeq(auth[len(prefix):], ",") {
 		parts := strings.SplitN(strings.TrimSpace(field), "=", 2)
 		if len(parts) != 2 {
 			continue
