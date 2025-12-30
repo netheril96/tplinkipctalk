@@ -9,12 +9,26 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 )
 
 type TplinkTalkConnection struct {
-	rw     bufio.ReadWriter
-	user   string
-	passwd string
+	rw         bufio.ReadWriter
+	user       string
+	passwd     string
+	packetizer rtp.Packetizer
+}
+
+func NewTplinkTalkConnection(rw bufio.ReadWriter, user, passwd string, ssrc uint32) *TplinkTalkConnection {
+	packetizer := rtp.NewPacketizer(1200, 102, ssrc, &codecs.G711Payloader{}, rtp.NewRandomSequencer(), 16000)
+	return &TplinkTalkConnection{
+		rw:         rw,
+		user:       user,
+		passwd:     passwd,
+		packetizer: packetizer,
+	}
 }
 
 type rtspResponse struct {
@@ -73,6 +87,41 @@ func (p *TplinkTalkConnection) Stop() error {
 	}
 	_, err = p.writeAndRead("TEARDOWN rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 4\r\n\r\n")
 	return err
+}
+
+func (p *TplinkTalkConnection) SendPcm(pcm []byte) error {
+	packets := p.packetizer.Packetize(pcm, uint32(len(pcm)))
+	for _, packet := range packets {
+		packet_bytes, err := packet.Marshal()
+		if err != nil {
+			return err
+		}
+		err = p.rw.WriteByte('$')
+		if err != nil {
+			return err
+		}
+		err = p.rw.WriteByte(1)
+		if err != nil {
+			return err
+		}
+		err = p.rw.WriteByte(byte(len(packet_bytes) >> 8))
+		if err != nil {
+			return err
+		}
+		err = p.rw.WriteByte(byte(len(packet_bytes) & 0xff))
+		if err != nil {
+			return err
+		}
+		_, err = p.rw.Write(packet_bytes)
+		if err != nil {
+			return err
+		}
+		err = p.rw.Flush()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func calculateDigestAuth(user, passwd, realm, nonce, method, uri string) string {
