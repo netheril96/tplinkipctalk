@@ -6,14 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/textproto"
 	"strconv"
 	"strings"
 )
 
 type TplinkTalkConnection struct {
-	conn   net.Conn
 	rw     bufio.ReadWriter
 	user   string
 	passwd string
@@ -25,16 +23,20 @@ type rtspResponse struct {
 	Body       []byte
 }
 
-func (c *TplinkTalkConnection) Start() error {
-	_, err := fmt.Fprint(c.rw, "MULTITRANS rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 0\r\nContent-Length: 0\r\nX-Handshake: unused debug\r\nX-Client-Model: Android\r\nX-Client-UUID: 095250a6-c01d-4af3-8ca5-7536dd45a4ff19b6d3470c5\r\n\r\n")
+func (c *TplinkTalkConnection) writeAndRead(s string) (*rtspResponse, error) {
+	_, err := fmt.Fprint(c.rw, s)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = c.rw.Flush()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	resp, err := c.readRtspResponse()
+	return c.readRtspResponse()
+}
+
+func (c *TplinkTalkConnection) Start() error {
+	resp, err := c.writeAndRead("MULTITRANS rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 0\r\nContent-Length: 0\r\nX-Handshake: unused debug\r\nX-Client-Model: Android\r\nX-Client-UUID: 095250a6-c01d-4af3-8ca5-7536dd45a4ff19b6d3470c5\r\n\r\n")
 	if err != nil {
 		return err
 	}
@@ -52,15 +54,31 @@ func (c *TplinkTalkConnection) Start() error {
 	uri := "rtsp://127.0.0.1/multitrans"
 	method := "MULTITRANS"
 	authHeader := calculateDigestAuth(c.user, c.passwd, realm, nonce, method, uri)
-	fmt.Println("Authorization: " + authHeader)
+	_, err = c.writeAndRead(fmt.Sprintf("MULTITRANS rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 1\r\nContent-Type: application/json\r\nX-Handshake: unused\r\nAuthorization: %s\r\nX-Client-Model: Android\r\nX-Client-UUID: 095250a6-c01d-4af3-8ca5-7536dd45a4ff19b6d3470c5\r\n\r\n", authHeader))
+	if err != nil {
+		return err
+	}
+	_, err = c.writeAndRead("MULTITRANS rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 2\r\nContent-Type: application/json\r\nContent-Length: 74\r\n\r\n{\"type\":\"request\",\"seq\":0,\"params\":{\"method\":\"get\",\"talk\":{\"mode\":\"aec\"}}}")
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
+func (p *TplinkTalkConnection) Stop() error {
+	_, err := p.writeAndRead("MULTITRANS rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 3\r\nX-Session-Id: 0\r\nContent-Type: application/json\r\nContent-Length: 65\r\n\r\n{\"type\":\"request\",\"seq\":1,\"params\":{\"method\":\"do\",\"stop\":\"null\"}}")
+	if err != nil {
+		return err
+	}
+	_, err = p.writeAndRead("TEARDOWN rtsp://127.0.0.1/multitrans RTSP/1.0\r\nCSeq: 4\r\n\r\n")
+	return err
+}
+
 func calculateDigestAuth(user, passwd, realm, nonce, method, uri string) string {
-	ha1 := md5.Sum([]byte(fmt.Sprintf("%s:%s:%s", user, realm, passwd)))
-	ha2 := md5.Sum([]byte(fmt.Sprintf("%s:%s", method, uri)))
-	response := md5.Sum([]byte(fmt.Sprintf("%x:%s:%x", ha1, nonce, ha2)))
+	ha1 := md5.Sum(fmt.Appendf(nil, "%s:%s:%s", user, realm, passwd))
+	ha2 := md5.Sum(fmt.Appendf(nil, "%s:%s", method, uri))
+	response := md5.Sum(fmt.Appendf(nil, "%x:%s:%x", ha1, nonce, ha2))
 
 	return fmt.Sprintf("Digest username=\"%s\", realm=\"%s\", nonce=\"%s\", uri=\"%s\", response=\"%x\"",
 		user, realm, nonce, uri, response)
