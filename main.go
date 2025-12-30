@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/netheril96/tplinkipctalk/lib"
 	"github.com/pion/rtp"
@@ -74,10 +75,22 @@ func parser_test() error {
 func talk_main() error {
 	user := flag.String("user", "admin", "User name")
 	passwd := flag.String("passwd", "", "Password")
+	passfile := flag.String("passfile", "", "Password file")
 	ip := flag.String("ip", "10.88.40.16", "IP address")
 	port := flag.String("port", "554", "Port")
 
 	flag.Parse()
+	if *passwd == "" {
+		if *passfile != "" {
+			data, err := os.ReadFile(*passfile)
+			if err != nil {
+				return err
+			}
+			*passwd = strings.TrimSpace(string(data))
+		} else {
+			return errors.New("either --passwd or --passfile is required")
+		}
+	}
 	conn, err := net.Dial("tcp", net.JoinHostPort(*ip, *port))
 	if err != nil {
 		return err
