@@ -10,7 +10,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/netheril96/tplinkipctalk/lib"
 	"github.com/pion/rtp"
@@ -103,22 +105,44 @@ func talk_main() error {
 		return err
 	}
 	defer tp.Stop()
-	buf := make([]byte, 1000)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if n > 0 {
-			if err := tp.SendPcm(buf[:n]); err != nil {
-				return err
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+	input := make(chan []byte)
+	readErr := make(chan error)
+
+	go func() {
+		buf := make([]byte, 1000)
+		for {
+			n, err := os.Stdin.Read(buf)
+			if n > 0 {
+				chunk := make([]byte, n)
+				copy(chunk, buf[:n])
+				input <- chunk
+			}
+			if err != nil {
+				readErr <- err
+				return
 			}
 		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
+	}()
+
+	for {
+		select {
+		case <-sigs:
+			return nil
+		case data := <-input:
+			if err := tp.SendPcm(data); err != nil {
+				return err
+			}
+		case err := <-readErr:
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
 	}
-	return nil
 }
 
 func main() {
