@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/netheril96/tplinkipctalk/lib"
 	"github.com/pion/rtp"
@@ -113,8 +114,11 @@ func talk_main() error {
 	readErr := make(chan error)
 
 	go func() {
+		ticker := time.NewTicker(time.Second / 16)
+		defer ticker.Stop()
 		buf := make([]byte, 1000)
 		for {
+			<-ticker.C
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
 				chunk := make([]byte, n)
